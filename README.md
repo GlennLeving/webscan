@@ -206,6 +206,20 @@ The unit runs with `ProtectSystem=strict` and may only write inside `~/webscan`.
 To change the port or listen address, edit `ExecStart` and run
 `systemctl --user daemon-reload && systemctl --user restart webscan`.
 
+## Behind nginx
+
+`nginx-webscan.conf` publishes WebScan as `http://webscan.stansomatic.local`:
+
+```
+sudo cp nginx-webscan.conf /etc/nginx/sites-available/webscan.conf
+sudo ln -s /etc/nginx/sites-available/webscan.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+The name also needs an A record in DNS pointing at this server. WebScan reads the
+real client address from `X-Forwarded-For` (trusted from loopback only), so the
+login lockout still works per client behind the proxy.
+
 ## Updating
 
 `update.sh` fetches the latest code, restarts the service and checks that it
