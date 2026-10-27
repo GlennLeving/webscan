@@ -208,7 +208,7 @@ function rowsAll() {
 
 function matches(h, q) {
   if (!q) return true;
-  const hay = [h.ip, h.name, h.mac, h.vendor, h.workgroup, h.via, h.change, h.moved_from || '']
+  const hay = [h.ip, h.name, nameCheckText(h), h.mac, h.vendor, h.workgroup, h.via, h.change, h.moved_from || '']
     .concat(h.ports.map((p) => `${p.port} ${p.service} ${p.info}`)).join(' ').toLowerCase();
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
@@ -287,7 +287,7 @@ function render() {
     out.push(`<tr class="host${h.change === 'gone' ? ' gone' : ''}${isOpen ? ' open' : ''}" data-id="${esc(id)}">
       <td><span class="dot ${dot}" title="${esc(foundBy(h))}"></span></td>
       <td class="ip">${esc(h.ip)}${tags}</td>
-      <td class="name" title="${esc(h.name)}">${esc(h.name)}${h.name_src === 'netbios' ? '<span class="tag nb" title="from NetBIOS, not DNS">nb</span>' : ''}</td>
+      <td class="name" title="${esc(nameCheckTip(h) || h.name)}">${staleTag(h)}${esc(h.name)}${h.name_src === 'netbios' ? '<span class="tag nb" title="from NetBIOS, not DNS">nb</span>' : ''}</td>
       <td class="mac">${esc(h.mac)}</td>
       <td class="vendor" title="${esc(h.vendor)}">${esc(h.vendor)}</td>
       <td class="num">${h.rtt != null ? ms(h.rtt) : `<span class="muted small">${h.change === 'gone' ? '' : 'no'}</span>`}</td>
@@ -352,6 +352,9 @@ function detail(h) {
   const rows = [
     ['Found by', esc(foundBy(h)) || '-'],
     ['Name', h.name ? `${esc(h.name)} <span class="muted small">(${h.name_src === 'netbios' ? 'NetBIOS' : 'reverse DNS'})</span>` : '<span class="muted">no name found</span>'],
+    h.name_check ? ['Name check', h.name_check === 'ok'
+      ? `confirmed — ${esc(h.name)} resolves to ${esc(h.ip)}`
+      : `<span class="warn-text">${esc(nameCheckTip(h))}</span>`] : null,
     h.workgroup ? ['Workgroup / domain', esc(h.workgroup)] : null,
     h.moved_from ? ['Previous address', esc(h.moved_from)] : null,
     ['First seen', esc(when(h.first_seen)) || '-'],
@@ -368,11 +371,11 @@ function exportCsv() {
     s = String(s == null ? '' : s);
     return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  const head = ['status', 'ip', 'name', 'mac', 'vendor', 'ping_ms', 'found_by', 'open_ports', 'services', 'workgroup', 'first_seen'];
+  const head = ['status', 'ip', 'name', 'name_check', 'mac', 'vendor', 'ping_ms', 'found_by', 'open_ports', 'services', 'workgroup', 'first_seen'];
   const lines = [head.join(',')];
   for (const h of visible()) {
     lines.push([
-      h.change || '', h.ip, h.name, h.mac, h.vendor, h.rtt == null ? '' : h.rtt.toFixed(2), h.via,
+      h.change || '', h.ip, h.name, nameCheckText(h), h.mac, h.vendor, h.rtt == null ? '' : h.rtt.toFixed(2), h.via,
       h.ports.map((p) => p.port).join(' '),
       h.ports.map((p) => `${p.port}/${p.service}${p.info ? ' ' + p.info : ''}`).join('; '),
       h.workgroup, h.first_seen ? new Date(h.first_seen * 1000).toISOString().slice(0, 16).replace('T', ' ') : '',
@@ -387,6 +390,29 @@ function exportCsv() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+/* ---------- is the name still right? ---------- */
+// A PTR name is confirmed when the name's own A record points back at the
+// host. One that does not is usually left over from a machine that was
+// renamed or moved, and names the wrong box.
+function nameCheckText(h) {
+  if (h.name_check === 'ok') return 'confirmed';
+  if (h.name_check === 'mismatch') return 'stale: name resolves to ' + h.name_fwd.join(', ');
+  if (h.name_check === 'missing') return 'stale: name does not resolve';
+  return '';
+}
+
+function nameCheckTip(h) {
+  if (h.name_check === 'mismatch')
+    return `Forward lookup of ${h.name} returns ${h.name_fwd.join(', ')}, not ${h.ip}. `
+      + 'The PTR record is probably left over from another machine.';
+  if (h.name_check === 'missing')
+    return `${h.name} does not resolve (no A record). The PTR record is probably stale.`;
+  return '';
+}
+
+const staleTag = (h) => (h.name_check === 'mismatch' || h.name_check === 'missing')
+  ? `<span class="tag stale" title="${esc(nameCheckTip(h))}">⚠ stale</span>` : '';
 
 /* ---------- printing ---------- */
 const FILTER_NAMES = { all: 'all hosts', new: 'new hosts only', gone: 'gone hosts only', ports: 'hosts with open ports' };

@@ -413,62 +413,56 @@ def _read_name(buf: bytes, i: int) -> tuple[str, int]:
     return ".".join(parts), (end if end is not None else i)
 
 
-def _ptr_query(txid: int, ip: str) -> bytes:
-    qname = ".".join(reversed(ip.split("."))) + ".in-addr.arpa"
+def _query(txid: int, qname: str, qtype: int) -> bytes:
     return (struct.pack("!HHHHHH", txid, 0x0100, 1, 0, 0, 0)
-            + _dns_name(qname) + struct.pack("!HH", 12, 1))
+            + _dns_name(qname) + struct.pack("!HH", qtype, 1))
 
 
-def _ptr_answer(pkt: bytes) -> tuple[int, int, str]:
-    """(txid, rcode, name) from a response. name is '' when there is none."""
+def _answers(pkt: bytes) -> tuple[int, int, list[tuple[int, str]]]:
+    """(txid, rcode, [(type, value)]) from a response. PTR and CNAME values
+    are names, A values are addresses; other types are skipped."""
     txid, flags, qd, an = struct.unpack("!HHHH", pkt[:8])
     i = 12
     for _ in range(qd):
         _, i = _read_name(pkt, i)
         i += 4
+    out = []
     for _ in range(an):
         _, i = _read_name(pkt, i)
         rtype, _cls, _ttl, rdlen = struct.unpack("!HHIH", pkt[i:i + 10])
         i += 10
-        if rtype == 12:
-            name, _ = _read_name(pkt, i)
-            return txid, flags & 0x0F, name
+        if rtype in (5, 12):
+            out.append((rtype, _read_name(pkt, i)[0]))
+        elif rtype == 1 and rdlen == 4:
+            out.append((rtype, socket.inet_ntoa(pkt[i:i + 4])))
         i += rdlen
-    return txid, flags & 0x0F, ""
+    return txid, flags & 0x0F, out
 
 
-def reverse_dns(addrs: list[str], servers: list[str], timeout: float,
-                stopped: Stopped) -> dict[str, str]:
-    """{ip: name}. Every query goes out at once; addresses a server did not
-    answer at all (as opposed to answering 'no such name') are asked again at
-    the next server."""
-    names: dict[str, str] = {}
-    if not servers:
-        for ip in addrs:
-            if stopped():
-                break
-            try:
-                names[ip] = socket.gethostbyaddr(ip)[0]
-            except OSError:
-                pass
-        return names
-
-    todo = list(addrs)
+def _dns_bulk(queries: dict[str, tuple[str, int]], servers: list[str], timeout: float,
+              stopped: Stopped) -> dict[str, tuple[int, list[tuple[int, str]]]]:
+    """Send every query at once and collect {key: (rcode, answers)}. A key
+    that a server did not answer at all - as opposed to answering 'no such
+    name' - is asked again at the next server. Keys no server answered are
+    missing from the result."""
+    got: dict[str, tuple[int, list[tuple[int, str]]]] = {}
+    todo = list(queries)
     for server in servers:
         if not todo or stopped():
             break
         base = random.randrange(0, 0x10000)
-        by_id = {(base + k) & 0xFFFF: ip for k, ip in enumerate(todo)}
-        answered: set[str] = set()
+        by_id = {(base + k) & 0xFFFF: key for k, key in enumerate(todo)}
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.setblocking(False)
-            for txid, ip in by_id.items():
+            for txid, key in by_id.items():
+                qname, qtype = queries[key]
                 try:
-                    s.sendto(_ptr_query(txid, ip), (server, 53))
-                except OSError:
-                    break
+                    s.sendto(_query(txid, qname, qtype), (server, 53))
+                except (OSError, UnicodeEncodeError, ValueError):
+                    continue
             end = time.monotonic() + timeout
-            while len(answered) < len(by_id) and time.monotonic() < end:
+            answered = 0
+            while answered < len(by_id) and time.monotonic() < end:
                 ready, _, _ = select.select([s], [], [], max(0.0, end - time.monotonic()))
                 if not ready:
                     break
@@ -479,17 +473,78 @@ def reverse_dns(addrs: list[str], servers: list[str], timeout: float,
                 if src != server or len(pkt) < 12:
                     continue
                 try:
-                    txid, rcode, name = _ptr_answer(pkt)
+                    txid, rcode, answers = _answers(pkt)
                 except (ValueError, struct.error, IndexError):
                     continue
-                ip = by_id.get(txid)
-                if ip is None:
+                key = by_id.get(txid)
+                if key is None or key in got:
                     continue
-                answered.add(ip)
-                if rcode == 0 and name:
-                    names[ip] = name.rstrip(".")
-        todo = [ip for ip in todo if ip not in answered]
+                got[key] = (rcode, answers)
+                answered += 1
+        todo = [k for k in todo if k not in got]
+    return got
+
+
+def reverse_dns(addrs: list[str], servers: list[str], timeout: float,
+                stopped: Stopped) -> dict[str, str]:
+    """{ip: name} from PTR records."""
+    names: dict[str, str] = {}
+    if not servers:
+        for ip in addrs:
+            if stopped():
+                break
+            try:
+                names[ip] = socket.gethostbyaddr(ip)[0]
+            except OSError:
+                pass
+        return names
+    queries = {ip: (".".join(reversed(ip.split("."))) + ".in-addr.arpa", 12) for ip in addrs}
+    for ip, (rcode, answers) in _dns_bulk(queries, servers, timeout, stopped).items():
+        ptr = [v for t, v in answers if t == 12]
+        if rcode == 0 and ptr:
+            names[ip] = ptr[0].rstrip(".")
     return names
+
+
+def forward_dns(names: list[str], servers: list[str], timeout: float,
+                stopped: Stopped) -> dict[str, list[str] | None]:
+    """{name (lower case): [addresses]} from A records, following CNAMEs
+    within the answer. [] = the name does not resolve. Names no server
+    answered for are missing, so 'could not check' never looks like
+    'does not resolve'."""
+    uniq = sorted({n.lower().rstrip(".") for n in names if n})
+    out: dict[str, list[str] | None] = {}
+    if not servers:
+        for name in uniq:
+            if stopped():
+                break
+            try:
+                out[name] = sorted(set(socket.gethostbyname_ex(name)[2]))
+            except socket.gaierror as exc:
+                if exc.errno in (socket.EAI_NONAME, getattr(socket, "EAI_NODATA", -5)):
+                    out[name] = []
+            except OSError:
+                pass
+        return out
+    for name, (rcode, answers) in _dns_bulk({n: (n, 1) for n in uniq}, servers, timeout, stopped).items():
+        if rcode == 0:
+            out[name] = sorted({v for t, v in answers if t == 1})
+        elif rcode == 3:                  # NXDOMAIN
+            out[name] = []
+        # SERVFAIL, REFUSED and the like say nothing about the name.
+    return out
+
+
+def name_check(ip: str, name: str, forward: dict[str, list[str] | None]) -> tuple[str, list[str]]:
+    """Does the PTR name of `ip` point back to it? ('ok' | 'mismatch' |
+    'missing' | '' when it could not be checked, forward addresses)."""
+    key = name.lower().rstrip(".")
+    if key not in forward:
+        return "", []
+    addrs = forward[key] or []
+    if ip in addrs:
+        return "ok", addrs
+    return ("mismatch" if addrs else "missing"), addrs
 
 
 # --------------------------------------------------------------------------
@@ -679,7 +734,8 @@ def scan(addrs: list[str], cfg: dict, progress: Progress, stopped: Stopped) -> l
     def host(ip: str) -> dict:
         if ip not in hosts:
             hosts[ip] = {"ip": ip, "mac": "", "vendor": "", "name": "", "name_src": "",
-                         "workgroup": "", "via": [], "rtt": None, "ports": [], "self": False}
+                         "name_check": "", "name_fwd": [], "workgroup": "", "via": [],
+                         "rtt": None, "ports": [], "self": False}
         return hosts[ip]
 
     for ip in addrs:
@@ -737,8 +793,14 @@ def scan(addrs: list[str], cfg: dict, progress: Progress, stopped: Stopped) -> l
     found = sorted(hosts, key=ipnum)
     if cfg["resolve_names"] and not stopped():
         progress("names", 0, len(found))
-        for ip, name in reverse_dns(found, cfg["dns_servers"], cfg["dns_timeout"], stopped).items():
+        ptr = reverse_dns(found, cfg["dns_servers"], cfg["dns_timeout"], stopped)
+        for ip, name in ptr.items():
             hosts[ip]["name"], hosts[ip]["name_src"] = name, "dns"
+        # Forward-confirm each PTR name: a record left behind when a machine
+        # was renamed or moved still answers, but names the wrong host.
+        fwd = forward_dns(list(ptr.values()), cfg["dns_servers"], cfg["dns_timeout"], stopped)
+        for ip, name in ptr.items():
+            hosts[ip]["name_check"], hosts[ip]["name_fwd"] = name_check(ip, name, fwd)
         progress("names", len(found), len(found))
     if cfg["netbios"] and not stopped():
         progress("netbios", 0, len(found))

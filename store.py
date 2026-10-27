@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS results(
   vendor    TEXT NOT NULL DEFAULT '',
   name      TEXT NOT NULL DEFAULT '',
   name_src  TEXT NOT NULL DEFAULT '',  -- dns | netbios
+  name_check TEXT NOT NULL DEFAULT '', -- ok | mismatch | missing | '' (not checked)
+  name_fwd  TEXT NOT NULL DEFAULT '',  -- what the name's A lookup returned, space separated
   workgroup TEXT NOT NULL DEFAULT '',
   via       TEXT NOT NULL DEFAULT '',  -- ping,arp,tcp,self
   rtt       REAL,                      -- ms, NULL = no ping answer
@@ -60,7 +62,13 @@ CREATE TABLE IF NOT EXISTS seen(
 ) WITHOUT ROWID;
 """
 
-COLUMNS = ("ip", "ipnum", "mac", "vendor", "name", "name_src", "workgroup", "via", "rtt", "ports")
+COLUMNS = ("ip", "ipnum", "mac", "vendor", "name", "name_src", "name_check", "name_fwd",
+           "workgroup", "via", "rtt", "ports")
+
+# Columns added after the first release, for databases made before them.
+MIGRATIONS = {
+    "results": [("name_check", "TEXT NOT NULL DEFAULT ''"), ("name_fwd", "TEXT NOT NULL DEFAULT ''")],
+}
 
 
 def seen_key(row: dict) -> str:
@@ -102,6 +110,11 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
+        for table, cols in MIGRATIONS.items():
+            have = {r["name"] for r in self.db.execute("PRAGMA table_info(%s)" % table)}
+            for col, decl in cols:
+                if col not in have:
+                    self.db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, col, decl))
         # A scan still 'running' at startup was cut off when we last stopped.
         self.db.execute("UPDATE scans SET status='error', error='interrupted - WebScan was stopped',"
                         " finished=COALESCE(finished, started) WHERE status='running'")
@@ -167,11 +180,12 @@ class Store:
         rows = []
         for h in hosts:
             rows.append((sid, h["ip"], h["ipnum"], h["mac"], h["vendor"], h["name"], h["name_src"],
+                         h.get("name_check", ""), " ".join(h.get("name_fwd") or []),
                          h["workgroup"], h["via"], h["rtt"], json.dumps(h["ports"])))
         with self.lock:
             self.db.executemany(
                 "INSERT OR REPLACE INTO results(scan_id,ip,ipnum,mac,vendor,name,name_src,"
-                "workgroup,via,rtt,ports) VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows)
+                "name_check,name_fwd,workgroup,via,rtt,ports) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
             for h in hosts:
                 self.db.execute(
                     "INSERT INTO seen(key,first_seen,last_seen,last_ip) VALUES(?,?,?,?)"
@@ -239,6 +253,7 @@ class Store:
                            (sid,)):
             d = dict(r)
             d["ports"] = json.loads(d["ports"] or "[]")
+            d["name_fwd"] = d["name_fwd"].split()
             out.append(d)
         return out
 

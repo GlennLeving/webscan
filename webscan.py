@@ -291,8 +291,20 @@ def scan_view(sid: int, vs: int = 0) -> dict | None:
             "comparable": store.comparable(sid)}
 
 
-CSV_HEAD = ["status", "ip", "name", "mac", "vendor", "ping_ms", "found_by",
+CSV_HEAD = ["status", "ip", "name", "name_check", "mac", "vendor", "ping_ms", "found_by",
             "open_ports", "services", "workgroup", "first_seen"]
+
+
+def name_check_text(h: dict) -> str:
+    """The forward-confirmation of a PTR name, in words for CSV and print."""
+    check = h.get("name_check", "")
+    if check == "ok":
+        return "confirmed"
+    if check == "mismatch":
+        return "stale: name resolves to " + ", ".join(h.get("name_fwd") or [])
+    if check == "missing":
+        return "stale: name does not resolve"
+    return ""
 
 
 def csv_rows(view: dict) -> list[list[str]]:
@@ -300,7 +312,7 @@ def csv_rows(view: dict) -> list[list[str]]:
     for h in view["hosts"] + view["gone"]:
         first = h.get("first_seen")
         rows.append([
-            h.get("change", "") or "", h["ip"], h["name"], h["mac"], h["vendor"],
+            h.get("change", "") or "", h["ip"], h["name"], name_check_text(h), h["mac"], h["vendor"],
             "" if h["rtt"] is None else "%.2f" % h["rtt"], h["via"],
             " ".join(str(p["port"]) for p in h["ports"]),
             "; ".join("%d/%s%s" % (p["port"], p["service"], (" " + p["info"]) if p["info"] else "")

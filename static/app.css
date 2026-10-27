@@ -129,6 +129,8 @@ table.hosts{width:100%;border-collapse:collapse;font-variant-numeric:tabular-num
   text-transform:uppercase;letter-spacing:.04em;margin-left:6px;vertical-align:1px}
 .tag.new{color:var(--up)} .tag.gone{color:var(--down)} .tag.moved{color:var(--warn)}
 .tag.nb{color:var(--muted)}
+.tag.stale{color:var(--warn);margin:0 6px 0 0;cursor:help}
+.warn-text{color:var(--warn)}
 .chips{display:flex;flex-wrap:nowrap;gap:4px}
 .chip{font-size:11px;line-height:16px;padding:1px 7px;border-radius:5px;background:var(--panel2);
   border:1px solid var(--line);color:var(--text);text-decoration:none;white-space:nowrap}

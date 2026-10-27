@@ -80,7 +80,14 @@ A scan runs in phases; the progress bar shows which one it is in.
    192.168.65.170 and .172). The system resolver is bypassed on purpose: it does not
    resolve the `.local` domain reliably. Every host is also asked over NetBIOS
    (UDP 137), which most Windows machines and many printers answer; that name is
-   used when there is no PTR record, and tagged `nb`. NetBIOS also gives a MAC address for hosts
+   used when there is no PTR record, and tagged `nb`.
+
+   Every PTR name is then **forward-confirmed**: its A record is looked up at
+   the same servers, and if it does not resolve, or resolves to other addresses
+   than the host's, the name is marked **⚠ stale**. That is a PTR record left
+   behind when a machine was renamed or moved — it still answers, but names the
+   wrong box. The tooltip and the row details say what the forward lookup
+   returned; names are compared case-insensitively. NetBIOS also gives a MAC address for hosts
    across a router.
 5. **Details.** The title of the web page on open HTTP/HTTPS ports, and the
    greeting banner of ssh, ftp, smtp, pop3 and imap. On printers, cameras and
@@ -98,7 +105,7 @@ use one per Wi-Fi network, so it has no manufacturer. Refresh the registry with
 |---|---|
 | ● | Green: answers ping. Amber: there, but only answers ARP or TCP |
 | IP | Address. `NEW` / `GONE` against the scan it is compared with; `MOVED` when the same MAC had another address |
-| Name | Reverse DNS, or NetBIOS (`nb`) |
+| Name | Reverse DNS, or NetBIOS (`nb`). `⚠ stale` = the name does not point back to this address |
 | MAC / Manufacturer | From ARP, or from NetBIOS across a router |
 | Ping | Round trip, or `no` |
 | Services | Open ports. Web and FTP ports are links; hover for the page title or banner |
@@ -138,8 +145,9 @@ on the address alone would call every DHCP shuffle one host gone and one new.
 * **CSV (all)** saves every host in the scan plus the gone ones, from
   `GET /api/export.csv?id=N`.
 
-Columns: `status, ip, name, mac, vendor, ping_ms, found_by, open_ports, services,
-workgroup, first_seen`. The file is UTF-8 with a BOM, so Excel opens it with the
+Columns: `status, ip, name, name_check, mac, vendor, ping_ms, found_by, open_ports,
+services, workgroup, first_seen`. `name_check` is `confirmed`, `stale: name resolves
+to …`, `stale: name does not resolve`, or empty when it could not be checked. The file is UTF-8 with a BOM, so Excel opens it with the
 right characters.
 
 ## Printing
