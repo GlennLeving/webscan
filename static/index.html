@@ -1,0 +1,148 @@
+<!doctype html>
+<!--
+  WebScan - network scanner with a web UI
+  Author: Glenn Leving
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="author" content="Glenn Leving">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebScan - network scanner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📡</text></svg>">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>📡 WebScan</h1>
+  <form id="scan-form" class="scanbar" autocomplete="off">
+    <input id="targets" placeholder="e.g. 192.168.100.0/24, 10.0.0.1-50" spellcheck="false">
+    <button id="btn-scan" class="btn primary" type="submit">Scan</button>
+    <button id="btn-stop" class="btn danger hidden" type="button">Stop</button>
+  </form>
+  <div class="head-right">
+    <span id="mode" class="muted small"></span>
+    <button id="btn-settings" class="btn">Settings</button>
+  </div>
+</header>
+
+<div id="progress" class="progress hidden">
+  <div class="bar"><div id="prog-fill"></div></div>
+  <span id="prog-text" class="small"></span>
+</div>
+<p id="scan-err" class="err small banner hidden"></p>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="side-head"><h3>Scans</h3></div>
+    <ul id="history" class="history"></ul>
+    <p id="side-empty" class="muted small hidden">No scans yet.</p>
+  </aside>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 id="s-title">-</h2>
+          <div id="s-sub" class="muted small">no scan selected</div>
+        </div>
+        <div class="head-right">
+          <label class="small muted">Compare with
+            <select id="vs"></select>
+          </label>
+          <a id="csv-all" class="btn tiny" href="#" title="Every host in this scan, plus the gone ones">CSV (all)</a>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search IP, name, MAC, vendor, service ..." spellcheck="false">
+        <div id="filters" class="seg">
+          <button class="btn tiny on" data-f="all">All <span></span></button>
+          <button class="btn tiny" data-f="new">New <span></span></button>
+          <button class="btn tiny" data-f="gone">Gone <span></span></button>
+          <button class="btn tiny" data-f="ports">Open ports <span></span></button>
+        </div>
+        <button id="csv" class="btn tiny" title="The rows shown, as filtered and sorted">Export CSV</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="hosts">
+          <thead>
+            <tr>
+              <th data-k="status" class="dotcol"></th>
+              <th data-k="ip">IP</th>
+              <th data-k="name">Name</th>
+              <th data-k="mac">MAC</th>
+              <th data-k="vendor">Manufacturer</th>
+              <th data-k="rtt" class="num">Ping</th>
+              <th data-k="ports">Services</th>
+              <th data-k="first_seen">First seen</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="rows-empty" class="muted small">Run a scan to see the hosts on your network.</p>
+      <p id="count" class="muted small"></p>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-settings">
+  <div>
+    <div class="panel-head"><h2>Settings</h2>
+      <button id="logout" class="btn tiny hidden">Log out</button></div>
+
+    <form id="login-box" class="hidden" autocomplete="off">
+      <p class="muted small">Scanning and the settings are protected by a password.</p>
+      <label>Password <input type="password" id="pw" required></label>
+      <p class="err small hidden" id="login-err"></p>
+      <div class="row-end"><button class="btn primary" type="submit">Log in</button></div>
+    </form>
+
+    <div id="settings-body">
+      <form id="cfg-form">
+      <label>Default targets <input id="c-targets" spellcheck="false"></label>
+      <label>Ports to check (TCP) <input id="c-ports" spellcheck="false"></label>
+      <label>Discovery ports - tried on silent addresses behind a router <input id="c-disc" spellcheck="false"></label>
+      <label>DNS servers for reverse lookups (empty = the system resolver) <input id="c-dns" spellcheck="false"></label>
+      <div class="grid2">
+        <label>Ping timeout (s) <input type="number" id="c-ptime" step="0.1" min="0.2"></label>
+        <label>Ping rounds <input type="number" id="c-prounds" min="1" max="5"></label>
+        <label>ARP wait (s) <input type="number" id="c-arp" step="0.5" min="0"></label>
+        <label>TCP connect timeout (s) <input type="number" id="c-ctime" step="0.1" min="0.1"></label>
+        <label>Parallel connections <input type="number" id="c-threads" min="1" max="512"></label>
+        <label>Max addresses per scan <input type="number" id="c-max" min="1" max="4096"></label>
+        <label>Scan automatically every (min, 0 = off) <input type="number" id="c-sched" min="0"></label>
+        <label>Scans to keep <input type="number" id="c-keep" min="5"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="c-names"> Look up names (reverse DNS)</label>
+      <label class="check"><input type="checkbox" id="c-nb"> Ask Windows machines their name (NetBIOS)</label>
+      <label class="check"><input type="checkbox" id="c-http"> Read web page titles from open HTTP ports</label>
+      <p id="cfg-msg" class="small muted"></p>
+      <div class="row-end">
+        <button id="save-cfg" class="btn primary" type="submit">Save</button>
+      </div>
+      </form>
+
+      <h3>Password</h3>
+      <form id="pw-form" autocomplete="off">
+        <div class="grid2">
+          <label id="cur-wrap">Current <input type="password" id="pw-cur"></label>
+          <label>New (min. 4 characters) <input type="password" id="pw-new" required></label>
+        </div>
+        <p id="pw-msg" class="small muted"></p>
+        <div class="row-end"><button class="btn" type="submit">Change password</button></div>
+      </form>
+      <p id="db-info" class="small muted"></p>
+    </div>
+
+    <div class="row-end close-row">
+      <button id="close-settings" class="btn">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

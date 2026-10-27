@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# runtime state - not part of the source
+config.json
+auth.json
+webscan.db
+webscan.db-wal
+webscan.db-shm
+*.log

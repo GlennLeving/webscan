@@ -1,0 +1,40 @@
+# webscan as a systemd user service.
+# Install:  cp webscan.service ~/.config/systemd/user/
+#           systemctl --user daemon-reload
+#           systemctl --user enable --now webscan
+#           loginctl enable-linger $USER      # keep running when logged out
+# Author: Glenn Leving
+[Unit]
+Description=WebScan - network scanner with a web UI
+Documentation=file:%h/webscan/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/webscan
+ExecStart=/usr/bin/python3 %h/webscan/webscan.py --host 0.0.0.0 --port 8422
+
+# always restart, including after a crash
+Restart=always
+RestartSec=5
+
+# log goes to the journal: journalctl --user -u webscan
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=webscan
+
+# light sandboxing - may only write inside its own directory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=%h/webscan
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,52 @@
+{
+  "default_targets": "192.168.100.0/24",
+  "ports": [
+    21,
+    22,
+    23,
+    25,
+    53,
+    80,
+    110,
+    135,
+    139,
+    143,
+    443,
+    445,
+    515,
+    631,
+    1433,
+    3306,
+    3389,
+    5900,
+    5985,
+    8080,
+    8443,
+    9100
+  ],
+  "discovery_ports": [
+    22,
+    80,
+    443,
+    445,
+    3389
+  ],
+  "dns_servers": [
+    "192.168.65.170",
+    "192.168.65.172"
+  ],
+  "resolve_names": true,
+  "netbios": true,
+  "http_titles": true,
+  "ping_timeout": 1.0,
+  "ping_rounds": 2,
+  "arp_wait_seconds": 10.0,
+  "connect_timeout": 0.8,
+  "dns_timeout": 1.5,
+  "detail_timeout": 3.0,
+  "threads": 128,
+  "max_hosts": 1024,
+  "schedule_minutes": 0,
+  "keep_scans": 200,
+  "oui_dir": "/usr/share/ieee-data"
+}
