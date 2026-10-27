@@ -567,7 +567,26 @@ class Handler(BaseHTTPRequestHandler):
                  ".svg": "image/svg+xml"}.get(os.path.splitext(safe)[1],
                                               "application/octet-stream")
         with open(safe, "rb") as fh:
-            self._send(200, fh.read(), ctype, {"Cache-Control": "no-cache"})
+            body = fh.read()
+        if safe.endswith(".html"):
+            body = versioned(body)
+        self._send(200, body, ctype, {"Cache-Control": "no-cache"})
+
+
+_ASSET_RE = re.compile(rb'"/static/([\w.-]+\.(?:css|js))"')
+
+
+def versioned(html: bytes) -> bytes:
+    """Give the page's stylesheet and script a ?v=<mtime> in their URL. A
+    browser holding an old copy then fetches the new one after an update,
+    instead of running last week's script against today's API."""
+    def sub(m: re.Match) -> bytes:
+        try:
+            stamp = int(os.path.getmtime(os.path.join(STATIC_DIR, m.group(1).decode())))
+        except OSError:
+            return m.group(0)
+        return b'"/static/%s?v=%d"' % (m.group(1), stamp)
+    return _ASSET_RE.sub(sub, html)
 
 
 def _int(v) -> int:
