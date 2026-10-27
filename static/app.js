@@ -388,6 +388,19 @@ function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/* ---------- printing ---------- */
+const FILTER_NAMES = { all: 'all hosts', new: 'new hosts only', gone: 'gone hosts only', ports: 'hosts with open ports' };
+
+// What the printout shows besides the table: which rows, and when.
+function printNote() {
+  const parts = [FILTER_NAMES[S.filter]];
+  if (S.query.trim()) parts.push(`matching "${S.query.trim()}"`);
+  parts.push(`${visible().length} shown`);
+  if (S.view && S.view.base) parts.push(`compared with scan #${S.view.base.id} from ${when(S.view.base.started)}`);
+  parts.push('printed ' + new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }));
+  $('print-note').textContent = parts.join(' · ');
+}
+
 /* ---------- settings and access ---------- */
 async function guard() {
   if (S.authed) return true;
@@ -488,6 +501,9 @@ function init() {
   };
   $('vs').onchange = () => { S.vs = +$('vs').value; loadScan(); };
   $('csv').onclick = exportCsv;
+  $('print').onclick = () => { if (S.view && S.view.scan) window.print(); };
+  // Also when printing from the browser's own menu.
+  window.addEventListener('beforeprint', printNote);
 
   $('btn-settings').onclick = openSettings;
   $('close-settings').onclick = () => $('dlg-settings').close();

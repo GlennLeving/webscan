@@ -154,3 +154,33 @@ a.chip:hover{background:var(--accent);color:#fff}
 .suggest .too-big b{color:var(--warn)}
 .suggest .s-hint{font-size:11px;color:var(--muted);padding:4px 9px 2px;cursor:default}
 .suggest .s-hint:hover{background:none}
+
+/* printing: the selected scan's table on white A4 paper, without the controls */
+.print-only{display:none}
+@page{size:A4 landscape;margin:12mm}
+@media print{
+  :root{--bg:#fff;--panel:#fff;--panel2:#f2f4f7;--line:#c9ced8;--text:#000;--muted:#555;
+        --up:#1a7f4b;--down:#b42318;--warn:#b54708;--accent:#1d4ed8}
+  body{background:#fff;color:#000;font-size:10px}
+  header,.sidebar,.toolbar,.progress,.banner,#count,dialog,.panel-head .head-right{display:none!important}
+  .print-only{display:block;margin-top:2px;color:var(--muted)}
+  .layout{display:block;padding:0;max-width:none}
+  .panel{border:0;padding:0;border-radius:0}
+  .panel-head{margin-bottom:6px}
+  h2{font-size:14px}
+  .table-wrap{overflow:visible}
+  .hosts th{position:static;font-size:8px;padding:3px 4px;cursor:default}
+  .hosts th.sorted::after{content:""}
+  .hosts td{padding:3px 4px}
+  .hosts tbody tr.host{cursor:default}
+  .hosts tr{break-inside:avoid}
+  .hosts thead{display:table-header-group}
+  .ip,.mac{font-size:9px}
+  /* Nothing is cut off on paper: long names and vendors wrap instead. */
+  .name,.vendor{max-width:none;white-space:normal;overflow:visible}
+  .chips{flex-wrap:wrap}
+  .chip{font-size:8px;padding:0 4px;border-color:var(--line)!important;color:#000!important;background:none}
+  .dot,.tag,.detail td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .detail td{padding-left:24px}
+  a{color:inherit;text-decoration:none}
+}

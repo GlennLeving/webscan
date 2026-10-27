@@ -142,6 +142,14 @@ Columns: `status, ip, name, mac, vendor, ping_ms, found_by, open_ports, services
 workgroup, first_seen`. The file is UTF-8 with a BOM, so Excel opens it with the
 right characters.
 
+## Printing
+
+**Print** in the toolbar prints the rows shown — as searched, filtered and
+sorted — on A4 landscape, black on white, without the controls. Under the title
+it says which rows these are and when it was printed. Long names and service
+lists wrap rather than being cut off, and rows opened for details print with
+their details. Choose *Save as PDF* in the print dialog for a PDF.
+
 ## Settings
 
 | Field | Meaning |
