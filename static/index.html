@@ -16,7 +16,11 @@
 <header>
   <h1>🔍 WebScan</h1>
   <form id="scan-form" class="scanbar" autocomplete="off">
-    <input id="targets" placeholder="e.g. 192.168.100.0/24, 10.0.0.1-50" spellcheck="false">
+    <div class="target-wrap">
+      <input id="targets" placeholder="e.g. 192.168.100.0/24, 10.0.0.1-50 - or an address, for its subnet"
+             spellcheck="false" aria-autocomplete="list" aria-controls="suggest">
+      <ul id="suggest" class="suggest hidden" role="listbox"></ul>
+    </div>
     <button id="btn-scan" class="btn primary" type="submit">Scan</button>
     <button id="btn-stop" class="btn danger hidden" type="button">Stop</button>
   </form>
@@ -34,7 +38,13 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <div class="side-head"><h3>Scans</h3></div>
+    <div class="side-head">
+      <h3>Scans</h3>
+      <span class="row-btns">
+        <button id="btn-pick" class="btn tiny" title="Select scans to delete">Select</button>
+        <button id="btn-del-sel" class="btn tiny danger hidden">Delete</button>
+      </span>
+    </div>
     <ul id="history" class="history"></ul>
     <p id="side-empty" class="muted small hidden">No scans yet.</p>
   </aside>

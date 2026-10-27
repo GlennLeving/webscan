@@ -154,6 +154,10 @@ class Store:
             " WHERE p.targets=s.targets AND p.id<>s.id AND p.status='done'"
             " ORDER BY p.id DESC LIMIT 200", (sid,))]
 
+    def scanned_targets(self) -> list[str]:
+        """Every distinct set of targets ever scanned."""
+        return [r["targets"] for r in self.read("SELECT DISTINCT targets FROM scans")]
+
     def last_started(self, targets: str) -> float:
         rows = self.read("SELECT MAX(started) m FROM scans WHERE targets=?", (targets,))
         return float(rows[0]["m"] or 0.0)
@@ -176,10 +180,15 @@ class Store:
             self.db.execute("UPDATE scans SET finished=?, status=?, alive=? WHERE id=?",
                             (now, status, len(hosts), sid))
             self.db.commit()
+        self.recount(sid)
+
+    def recount(self, sid: int) -> None:
+        """Work out and store how many hosts in `sid` are new and gone."""
         new = gone = None
         prev = self.previous(sid)
         if prev:
-            matched, left = compare(self.results(sid), self.results(prev["id"]))
+            hosts = self.results(sid)
+            matched, left = compare(hosts, self.results(prev["id"]))
             new, gone = len(hosts) - len(matched), len(left)
         self.write("UPDATE scans SET new=?, gone=? WHERE id=?", (new, gone, sid))
 
@@ -187,19 +196,41 @@ class Store:
         self.write("UPDATE scans SET finished=?, status='error', error=? WHERE id=?",
                    (time.time(), error[:500], sid))
 
-    def delete_scan(self, sid: int) -> None:
+    def delete_scans(self, ids: list[int], recount: bool = True) -> int:
+        """Delete scans. The scans that were compared with a deleted one are
+        now compared with an older scan, so their new/gone counts are worked
+        out again - unless `recount` is off (pruning only removes the oldest
+        scans, which nothing later depends on for long)."""
+        ids = sorted(set(ids))
+        if not ids:
+            return 0
+        marks = ",".join("?" * len(ids))
+        gone = self.read("SELECT id, targets FROM scans WHERE id IN (%s)" % marks, tuple(ids))
         with self.lock:
-            self.db.execute("DELETE FROM results WHERE scan_id=?", (sid,))
-            self.db.execute("DELETE FROM scans WHERE id=?", (sid,))
+            self.db.execute("DELETE FROM results WHERE scan_id IN (%s)" % marks, tuple(ids))
+            self.db.execute("DELETE FROM scans WHERE id IN (%s)" % marks, tuple(ids))
             self.db.commit()
+        if recount:
+            span: dict[str, tuple[int, int]] = {}
+            for r in gone:
+                lo, hi = span.get(r["targets"], (r["id"], r["id"]))
+                span[r["targets"]] = (min(lo, r["id"]), max(hi, r["id"]))
+            for targets, (lo, hi) in span.items():
+                # Any later scan up to and including the first complete one
+                # after the last deleted scan may have had a deleted scan as
+                # its baseline; from there on the baselines are untouched.
+                for r in self.read("SELECT id, status FROM scans WHERE targets=? AND id>?"
+                                   " AND status IN ('done','stopped') ORDER BY id", (targets, lo)):
+                    self.recount(r["id"])
+                    if r["status"] == "done" and r["id"] > hi:
+                        break
+        return len(gone)
 
     def prune(self, keep: int) -> int:
         """Drop all but the newest `keep` scans."""
         rows = self.read("SELECT id FROM scans WHERE status<>'running' ORDER BY id DESC LIMIT -1 OFFSET ?",
                          (keep,))
-        for r in rows:
-            self.delete_scan(r["id"])
-        return len(rows)
+        return self.delete_scans([r["id"] for r in rows], recount=False)
 
     # -- results -------------------------------------------------------
     def results(self, sid: int) -> list[dict]:

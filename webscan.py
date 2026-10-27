@@ -27,6 +27,7 @@ import io
 import ipaddress
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -41,6 +42,7 @@ sys.path.insert(0, BASE_DIR)
 import engine as engine_mod           # noqa: E402
 import oui                            # noqa: E402
 import scanner                        # noqa: E402
+import suggest                        # noqa: E402
 from store import Store, compare, seen_key   # noqa: E402
 
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -70,6 +72,7 @@ FLAGS = ("resolve_names", "netbios", "http_titles")
 
 store: Store
 eng: engine_mod.Engine
+suggester = suggest.Suggester()
 _cfg_lock = threading.Lock()
 
 
@@ -144,6 +147,11 @@ def validate_config(raw: dict) -> dict:
     scanner.parse_targets(targets, out["max_hosts"])        # raises if unusable
     out["default_targets"] = targets
     out["oui_dir"] = str(raw.get("oui_dir", out["oui_dir"])).strip() or out["oui_dir"]
+    url = str(raw.get("netbox_url", out["netbox_url"]) or "").strip().rstrip("/")
+    if url and not re.match(r"^https?://[^\s/]+(/\S*)?$", url):
+        raise ValueError("netbox_url must be an http:// or https:// address, or empty")
+    out["netbox_url"] = url
+    out["netbox_token_file"] = str(raw.get("netbox_token_file", out["netbox_token_file"]) or "").strip()
     return out
 
 
@@ -398,6 +406,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json({"scans": store.scans(lim)})
             if path == "/api/scan":
                 return self.get_scan(query)
+            if path == "/api/suggest":
+                return self.suggest(query)
             if path == "/api/session":
                 return self.json({"authed": self.authed(),
                                   "protected": has_password(),
@@ -440,12 +450,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/scan/stop":
                 return self.json({"ok": eng.stop()})
             if path == "/api/scan/delete":
-                sid = _int(data.get("id"))
+                raw = data.get("ids")
+                ids = [_int(i) for i in raw] if isinstance(raw, list) else [_int(data.get("id"))]
+                ids = [i for i in ids if i > 0]
                 job = eng.status()
-                if not sid or (job and job["id"] == sid):
-                    return self.fail(400, "cannot delete that scan")
-                store.delete_scan(sid)
-                return self.json({"ok": True})
+                if not ids or (job and job["id"] in ids):
+                    return self.fail(400, "nothing to delete, or the scan is still running")
+                return self.json({"ok": True, "deleted": store.delete_scans(ids)})
             if path == "/api/config":
                 try:
                     cfg = apply_config(data)
@@ -485,6 +496,16 @@ class Handler(BaseHTTPRequestHandler):
         if view is None:
             return self.fail(404, "no such scan")
         return self.json(view)
+
+    def suggest(self, query: dict):
+        ip = query.get("ip", [""])[0].strip()
+        try:
+            ipaddress.IPv4Address(ip)
+        except ValueError:
+            return self.json({"ip": ip, "suggestions": []})
+        with _cfg_lock:
+            cfg = dict(eng.config)
+        return self.json({"ip": ip, "suggestions": suggester.suggest(ip, cfg, store.scanned_targets())})
 
     def export_csv(self, query: dict):
         sid = _int(query.get("id", query.get("scan", [""]))[0])

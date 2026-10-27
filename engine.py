@@ -40,6 +40,8 @@ DEFAULT_CONFIG = {
     "schedule_minutes": 0,
     "keep_scans": 200,
     "oui_dir": "/usr/share/ieee-data",
+    "netbox_url": "http://127.0.0.1:8001",
+    "netbox_token_file": "~/.netbox-token",
 }
 
 PHASES = ("ping", "arp", "discovery", "ports", "names", "netbios", "details")

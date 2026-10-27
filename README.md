@@ -40,6 +40,24 @@ The scan field takes any mix of these, separated by spaces or commas:
 
 At most `max_hosts` addresses per scan (default 1024).
 
+### Subnet suggestions
+
+Type a single address and WebScan suggests the subnet it belongs to — with its
+real size, not a /24 guess. Tab (or a click) puts it in place of the address;
+the arrow keys pick another; Enter scans exactly what is typed. Where the answer
+comes from, best first:
+
+| Source | |
+|---|---|
+| NetBox | The prefixes documented there, most specific first, labelled with the first sentence of their description. `10.0.1.17` → `10.0.0.0/22 · VLAN 2 Wireless` |
+| local network | A network this server has an address on, with its real mask |
+| scanned before | A subnet in an earlier scan |
+| guess | The /24 around the address — only when nothing else knows it |
+
+NetBox is read with the token in `netbox_token_file` (read-only, at most every
+five minutes). Without NetBox, or if it does not answer, the other sources still
+work. Set `netbox_url` to `""` to turn it off.
+
 ## How it works
 
 A scan runs in phases; the progress bar shows which one it is in.
@@ -94,6 +112,14 @@ workgroup or domain, and every service with its title or banner.
 column heading to sort. The filters show all current hosts, only new, only gone,
 or only hosts with open ports.
 
+### Deleting scans
+
+The × on a scan in the list deletes that one. To delete several, press
+**Select**, tick the scans and press **Delete n**. A scan that was compared with
+a deleted one is then compared with the scan before it, and its new/gone counts
+are worked out again. The oldest scans beyond `keep_scans` are deleted
+automatically.
+
 ### New and gone
 
 A scan is compared with the previous **complete** scan of exactly the same
@@ -134,6 +160,8 @@ right characters.
 | `schedule_minutes` | Scan `default_targets` automatically this often; 0 = off |
 | `keep_scans` | Older scans are deleted |
 | `oui_dir` | Where the IEEE registry files are |
+| `netbox_url` | NetBox, for subnet suggestions; `""` = off |
+| `netbox_token_file` | File holding a NetBox API token (read-only is enough) |
 
 Changes made in the UI are written to `config.json` and take effect from the next
 scan. See `config.example.json` for the defaults.
@@ -183,7 +211,8 @@ sqlite3 webscan.db "SELECT ip, name, vendor FROM results WHERE scan_id=(SELECT M
 | `GET /api/export.csv?id=N&vs=M` | The same as CSV |
 | `POST /api/scan/start` | `{"targets": "192.168.100.0/24"}` — returns `{"id": N}` |
 | `POST /api/scan/stop` | Stop the running scan; what was found so far is kept, marked *stopped* |
-| `POST /api/scan/delete` | `{"id": N}` |
+| `POST /api/scan/delete` | `{"id": N}` or `{"ids": [N, M, ...]}` |
+| `GET /api/suggest?ip=A.B.C.D` | Subnets that address belongs to, best first |
 | `GET` / `POST /api/config` | Read and write settings |
 | `POST /api/login` / `POST /api/logout` | `{"password": "..."}` — sets a session cookie |
 | `GET /api/session` | `{authed, protected, lockout}` |

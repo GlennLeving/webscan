@@ -10,6 +10,8 @@ const S = {
   cfg: {}, authed: false, protected: false,
   filter: 'all', query: '', sort: { k: 'ip', desc: false }, open: new Set(),
   lastJobId: null,
+  picking: false, picked: new Set(),
+  sug: [], sugOn: -1, sugRange: null, sugSeq: 0,
 };
 
 const PHASES = {
@@ -77,12 +79,20 @@ function renderProgress() {
 function renderHistory() {
   const ul = $('history');
   $('side-empty').classList.toggle('hidden', S.scans.length > 0);
+  ul.classList.toggle('picking', S.picking);
+  for (const id of [...S.picked]) if (!S.scans.some((s) => s.id === id)) S.picked.delete(id);
+  $('btn-pick').textContent = S.picking ? 'Cancel' : 'Select';
+  $('btn-del-sel').classList.toggle('hidden', !S.picking);
+  $('btn-del-sel').disabled = !S.picked.size;
+  $('btn-del-sel').textContent = S.picked.size ? `Delete ${S.picked.size}` : 'Delete';
   ul.innerHTML = '';
   for (const s of S.scans) {
     const li = document.createElement('li');
-    li.className = s.id === S.sel ? 'sel' : '';
+    const running = s.status === 'running';
+    li.className = [s.id === S.sel && !S.picking ? 'sel' : '', S.picked.has(s.id) ? 'picked' : '',
+      running ? 'running' : ''].join(' ');
     let line;
-    if (s.status === 'running') line = '<span class="muted">running ...</span>';
+    if (running) line = '<span class="muted">running ...</span>';
     else if (s.status === 'error') line = `<span class="st-error" title="${esc(s.error)}">failed</span>`;
     else {
       line = `${s.alive} hosts`;
@@ -90,26 +100,97 @@ function renderHistory() {
       if (s.gone) line += ` · <span class="d-gone">−${s.gone}</span>`;
       if (s.status === 'stopped') line += ' · <span class="st-stopped">stopped</span>';
     }
-    li.innerHTML = `<div class="h-main"><b>${esc(when(s.started))}${s.trigger === 'schedule' ? ' ⏱' : ''}</b>
+    const pick = S.picking
+      ? `<input type="checkbox" class="h-pick" ${S.picked.has(s.id) ? 'checked' : ''} ${running ? 'disabled' : ''}>` : '';
+    li.innerHTML = `${pick}<div class="h-main"><b>${esc(when(s.started))}${s.trigger === 'schedule' ? ' ⏱' : ''}</b>
       <span class="small muted">${esc(s.targets)}</span><span class="small">${line}</span></div>
-      <button class="h-del" title="Delete this scan">×</button>`;
+      ${S.picking || running ? '' : '<button class="h-del" title="Delete this scan">×</button>'}`;
     li.onclick = async (ev) => {
-      if (ev.target.classList.contains('h-del')) return deleteScan(s);
-      if (s.status === 'running') return;
+      if (running) return;
+      if (S.picking) {
+        if (S.picked.has(s.id)) S.picked.delete(s.id); else S.picked.add(s.id);
+        return renderHistory();
+      }
+      if (ev.target.classList.contains('h-del')) return deleteScans([s.id]);
       S.sel = s.id; S.vs = 0; S.open.clear(); renderHistory(); await loadScan();
     };
     ul.appendChild(li);
   }
 }
 
-async function deleteScan(s) {
-  if (!await guard()) return;
-  if (!confirm(`Delete scan #${s.id} from ${when(s.started)}?`)) return;
+async function deleteScans(ids) {
+  if (!ids.length || !await guard()) return;
+  const what = ids.length === 1
+    ? (() => { const s = S.scans.find((x) => x.id === ids[0]); return `scan #${s.id} from ${when(s.started)}`; })()
+    : `${ids.length} scans`;
+  if (!confirm(`Delete ${what}? This cannot be undone.`)) return;
   try {
-    await post('/api/scan/delete', { id: s.id });
-    if (S.sel === s.id) { S.sel = null; S.view = null; render(); }
-    S.scans = S.scans.filter((x) => x.id !== s.id); renderHistory();
+    await post('/api/scan/delete', { ids });
+    S.scans = S.scans.filter((x) => !ids.includes(x.id));
+    S.picked.clear(); S.picking = false;
+    if (ids.includes(S.sel)) { S.sel = null; S.view = null; render(); }
+    // Counts of the scans after the deleted ones may have changed.
+    const st = await api('/api/state');
+    S.scans = st.scans;
+    if (S.sel === null) {
+      const first = S.scans.find((x) => x.status === 'done' || x.status === 'stopped');
+      if (first) S.sel = first.id;
+    }
+    renderHistory(); await loadScan();
   } catch (e) { alert(e.message); }
+}
+
+/* ---------- subnet suggestions ---------- */
+const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const SOURCES = { netbox: 'NetBox', local: 'local network', history: 'scanned before', guess: 'guess' };
+let sugTimer = null;
+
+// The word under the cursor in the scan field, and where it is.
+function tokenAtCaret() {
+  const el = $('targets');
+  const v = el.value, pos = el.selectionStart ?? v.length;
+  let a = pos, b = pos;
+  while (a > 0 && !/[\s,;]/.test(v[a - 1])) a--;
+  while (b < v.length && !/[\s,;]/.test(v[b])) b++;
+  return { text: v.slice(a, b), a, b };
+}
+
+function hideSuggest() {
+  S.sug = []; S.sugOn = -1; S.sugRange = null;
+  $('suggest').classList.add('hidden');
+}
+
+async function lookupSuggest() {
+  const tok = tokenAtCaret();
+  if (!IPV4.test(tok.text)) return hideSuggest();
+  const seq = ++S.sugSeq;
+  try {
+    const r = await api('/api/suggest?ip=' + encodeURIComponent(tok.text));
+    if (seq !== S.sugSeq || document.activeElement !== $('targets')) return;
+    S.sug = r.suggestions; S.sugOn = -1; S.sugRange = tok;
+    renderSuggest();
+  } catch (e) { hideSuggest(); }
+}
+
+function renderSuggest() {
+  const ul = $('suggest');
+  if (!S.sug.length) return hideSuggest();
+  const max = S.cfg.max_hosts;
+  ul.innerHTML = `<li class="s-hint">Subnet for ${esc(S.sugRange.text)} — Tab or click to use it, Enter scans as typed</li>`
+    + S.sug.map((x, i) => `<li role="option" data-i="${i}" class="${i === S.sugOn ? 'on' : ''}${x.too_big ? ' too-big' : ''}">
+      <b>${esc(x.net)}</b><span class="s-label">${esc(x.label)}</span>
+      <span class="s-meta">${x.addresses} addresses${x.too_big ? ` — over the limit of ${max}` : ''} · ${esc(SOURCES[x.source] || x.source)}</span></li>`).join('');
+  ul.classList.remove('hidden');
+}
+
+function applySuggest(i) {
+  const x = S.sug[i], r = S.sugRange;
+  if (!x || !r) return;
+  const el = $('targets');
+  el.value = el.value.slice(0, r.a) + x.net + el.value.slice(r.b);
+  const end = r.a + x.net.length;
+  el.focus(); el.setSelectionRange(end, end);
+  hideSuggest();
 }
 
 /* ---------- one scan ---------- */
@@ -346,6 +427,7 @@ function init() {
     e.preventDefault();
     if (!await guard()) return;
     $('scan-err').classList.add('hidden');
+    hideSuggest();
     try {
       const r = await post('/api/scan/start', { targets: $('targets').value.trim() });
       S.job = { id: r.id, targets: $('targets').value.trim(), phase: 'starting', done: 0, total: 0, started: Date.now() / 1000 };
@@ -354,6 +436,35 @@ function init() {
       $('scan-err').textContent = err.message; $('scan-err').classList.remove('hidden');
     }
   };
+  $('targets').oninput = () => { clearTimeout(sugTimer); sugTimer = setTimeout(lookupSuggest, 150); };
+  $('targets').onblur = () => setTimeout(hideSuggest, 150);
+  $('targets').onkeydown = (e) => {
+    if (!S.sug.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = S.sug.length;
+      S.sugOn = e.key === 'ArrowDown' ? (S.sugOn + 1) % n : (S.sugOn <= 0 ? n - 1 : S.sugOn - 1);
+      renderSuggest();
+    } else if (e.key === 'Tab' || (e.key === 'Enter' && S.sugOn >= 0)) {
+      e.preventDefault();
+      applySuggest(Math.max(0, S.sugOn));
+    } else if (e.key === 'Escape') {
+      hideSuggest();
+    }
+  };
+  // mousedown, not click: a click would blur the field and close the list first.
+  $('suggest').onmousedown = (e) => {
+    const li = e.target.closest('li[data-i]');
+    e.preventDefault();
+    if (li) applySuggest(+li.dataset.i);
+  };
+
+  $('btn-pick').onclick = async () => {
+    if (!S.picking && !await guard()) return;
+    S.picking = !S.picking; S.picked.clear(); renderHistory();
+  };
+  $('btn-del-sel').onclick = () => deleteScans([...S.picked]);
+
   $('btn-stop').onclick = async () => {
     if (!await guard()) return;
     try { await post('/api/scan/stop'); } catch (e) { alert(e.message); }

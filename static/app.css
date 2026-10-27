@@ -67,6 +67,7 @@ dialog input[type=text],dialog input[type=password],dialog input[type=number],di
 /* scan bar and progress */
 header{flex-wrap:wrap}
 .scanbar{flex:1;display:flex;gap:8px;max-width:640px;min-width:260px}
+.target-wrap{flex:1;min-width:0;position:relative;display:flex}
 .scanbar input{flex:1;min-width:0;padding:7px 10px;border-radius:7px;border:1px solid var(--line);
   background:var(--bg);color:var(--text);font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace}
 .btn.danger{border-color:var(--down);color:var(--down)}
@@ -86,8 +87,12 @@ header{flex-wrap:wrap}
 .h-main{flex:1;min-width:0}
 .h-main b{display:block;font-weight:600;font-variant-numeric:tabular-nums}
 .h-main > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.h-del{opacity:0;border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:14px}
+.h-del{opacity:.35;border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:15px}
 .history li:hover .h-del{opacity:1}
+.h-pick{margin:3px 2px 0 0;accent-color:var(--down)}
+.history.picking li{cursor:default}
+.history.picking li.picked{border-color:var(--down);background:var(--panel2)}
+.history.picking li.running{opacity:.5}
 .h-del:hover{color:var(--down)}
 .d-new{color:var(--up)} .d-gone{color:var(--down)}
 .st-stopped,.st-error{color:var(--warn)}
@@ -137,3 +142,17 @@ a.chip:hover{background:var(--accent);color:#fff}
 .detail dd{margin:0;word-break:break-word}
 .svc-list{margin:0;padding:0;list-style:none}
 .svc-list b{display:inline-block;min-width:110px;font-weight:600}
+
+/* subnet suggestions under the scan field */
+.suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;margin:0;padding:4px;
+  list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 8px 24px #0006}
+.suggest li{display:flex;align-items:baseline;gap:10px;padding:6px 9px;border-radius:6px;cursor:pointer}
+.suggest li.on,.suggest li:hover{background:var(--panel2)}
+.suggest li.on{box-shadow:inset 3px 0 0 var(--accent)}
+.suggest b{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;white-space:nowrap}
+.suggest .s-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.suggest .s-meta{font-size:11px;color:var(--muted);white-space:nowrap}
+.suggest .too-big b{color:var(--warn)}
+.suggest .s-hint{font-size:11px;color:var(--muted);padding:4px 9px 2px;cursor:default}
+.suggest .s-hint:hover{background:none}
