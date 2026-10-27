@@ -25,7 +25,7 @@ h3{font-size:12px;margin:18px 0 8px;color:var(--muted);text-transform:uppercase;
 .err{color:var(--down)}
 .num{text-align:right}
 
-.layout{display:flex;align-items:flex-start;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+.layout{display:flex;align-items:flex-start;gap:16px;padding:16px;max-width:2200px;margin:0 auto}
 .sidebar{flex:0 0 250px;background:var(--panel);border:1px solid var(--line);
   border-radius:10px;padding:12px;position:sticky;top:70px}
 .side-head{display:flex;align-items:center;justify-content:space-between}
@@ -111,7 +111,8 @@ table.hosts{width:100%;border-collapse:collapse;font-variant-numeric:tabular-num
 .hosts th.num{text-align:right}
 .hosts th.sorted::after{content:" ▲";font-size:9px}
 .hosts th.sorted.desc::after{content:" ▼"}
-.hosts td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.hosts td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.hosts td.num{white-space:nowrap}
 .hosts tbody tr.host{cursor:pointer}
 .hosts tbody tr.host:hover{background:var(--panel2)}
 .hosts tr.open{background:var(--panel2)}
@@ -125,8 +126,8 @@ table.hosts{width:100%;border-collapse:collapse;font-variant-numeric:tabular-num
   text-transform:uppercase;letter-spacing:.04em;margin-left:6px;vertical-align:1px}
 .tag.new{color:var(--up)} .tag.gone{color:var(--down)} .tag.moved{color:var(--warn)}
 .tag.nb{color:var(--muted)}
-.chips{display:flex;flex-wrap:wrap;gap:4px}
-.chip{font-size:11px;padding:1px 7px;border-radius:5px;background:var(--panel2);
+.chips{display:flex;flex-wrap:nowrap;gap:4px}
+.chip{font-size:11px;line-height:16px;padding:1px 7px;border-radius:5px;background:var(--panel2);
   border:1px solid var(--line);color:var(--text);text-decoration:none;white-space:nowrap}
 a.chip{border-color:var(--accent);color:var(--accent)}
 a.chip:hover{background:var(--accent);color:#fff}

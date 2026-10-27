@@ -211,7 +211,7 @@ function render() {
       <td class="mac">${esc(h.mac)}</td>
       <td class="vendor" title="${esc(h.vendor)}">${esc(h.vendor)}</td>
       <td class="num">${h.rtt != null ? ms(h.rtt) : `<span class="muted small">${h.change === 'gone' ? '' : 'no'}</span>`}</td>
-      <td><div class="chips">${h.ports.map((p) => chip(h.ip, p)).join('')}</div></td>
+      <td class="svc"><div class="chips">${chips(h)}</div></td>
       <td class="small muted">${esc(day(h.first_seen))}</td></tr>`);
     if (isOpen) out.push(detail(h));
   }
@@ -237,13 +237,31 @@ function link(ip, p) {
   return '';
 }
 
+// The port a service normally runs on. A chip only shows the port when it is
+// another one, so "https" and "https:8443" stay short and easy to tell apart.
+const STD_PORT = {
+  ftp: 21, ssh: 22, telnet: 23, smtp: 25, dns: 53, http: 80, kerberos: 88, pop3: 110,
+  msrpc: 135, netbios: 139, imap: 143, ldap: 389, https: 443, smb: 445, lpd: 515,
+  afp: 548, rtsp: 554, ipp: 631, ldaps: 636, imaps: 993, pop3s: 995, mssql: 1433,
+  mqtt: 1883, nfs: 2049, mysql: 3306, rdp: 3389, postgres: 5432, vnc: 5900,
+  winrm: 5985, 'winrm-tls': 5986, proxmox: 8006, jetdirect: 9100,
+};
+
 function chip(ip, p) {
-  const label = `${p.port}${p.service ? ' ' + p.service : ''}`;
+  const label = !p.service ? String(p.port)
+    : p.service + (STD_PORT[p.service] === p.port ? '' : ':' + p.port);
   const href = link(ip, p);
-  const title = esc(p.info || label);
+  const title = esc(`${p.port}/tcp ${p.service}${p.info ? ' — ' + p.info : ''}`);
   return href
     ? `<a class="chip" href="${esc(href)}" target="_blank" rel="noopener" title="${title}">${esc(label)}</a>`
     : `<span class="chip" title="${title}">${esc(label)}</span>`;
+}
+
+// Web interfaces first, as links, then everything else in port order.
+function chips(h) {
+  const web = h.ports.filter((p) => link(h.ip, p) && p.service !== 'ftp');
+  const rest = h.ports.filter((p) => !web.includes(p));
+  return web.concat(rest).map((p) => chip(h.ip, p)).join('');
 }
 
 function detail(h) {
