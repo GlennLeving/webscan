@@ -182,6 +182,10 @@ their details. Choose *Save as PDF* in the print dialog for a PDF.
 Changes made in the UI are written to `config.json` and take effect from the next
 scan. See `config.example.json` for the defaults.
 
+**Reset to default** in Settings fills the form with the default values; they
+take effect when you press Save. NetBox and `oui_dir` are not in the form and
+are left as they are.
+
 ## Password
 
 The results are open to anyone who can reach WebScan, but **starting or stopping
@@ -230,6 +234,7 @@ sqlite3 webscan.db "SELECT ip, name, vendor FROM results WHERE scan_id=(SELECT M
 | `POST /api/scan/delete` | `{"id": N}` or `{"ids": [N, M, ...]}` |
 | `GET /api/suggest?ip=A.B.C.D` | Subnets that address belongs to, best first |
 | `GET` / `POST /api/config` | Read and write settings |
+| `GET /api/config/defaults` | The default settings (used by "Reset to default") |
 | `POST /api/login` / `POST /api/logout` | `{"password": "..."}` — sets a session cookie |
 | `GET /api/session` | `{authed, protected, lockout}` |
 | `POST /api/set-password` | `{"current": "...", "new": "..."}` |

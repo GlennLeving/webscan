@@ -427,6 +427,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 with _cfg_lock:
                     return self.json(dict(eng.config))
+            if path == "/api/config/defaults":
+                return self.json(dict(engine_mod.DEFAULT_CONFIG))
             if path == "/api/export.csv":
                 return self.export_csv(query)
             return self.fail(404, "unknown path")

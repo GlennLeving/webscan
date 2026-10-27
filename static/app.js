@@ -440,7 +440,12 @@ function openSettings() {
   $('settings-body').classList.toggle('hidden', locked);
   $('logout').classList.toggle('hidden', !(S.protected && S.authed));
   $('cur-wrap').classList.toggle('hidden', !S.protected);
-  const c = S.cfg;
+  fillSettings(S.cfg);
+  $('cfg-msg').textContent = ''; $('pw-msg').textContent = '';
+  if (!$('dlg-settings').open) $('dlg-settings').showModal();
+}
+
+function fillSettings(c) {
   $('c-targets').value = c.default_targets || '';
   $('c-ports').value = (c.ports || []).join(', ');
   $('c-disc').value = (c.discovery_ports || []).join(', ');
@@ -450,8 +455,6 @@ function openSettings() {
   $('c-threads').value = c.threads; $('c-max').value = c.max_hosts;
   $('c-sched').value = c.schedule_minutes; $('c-keep').value = c.keep_scans;
   $('c-names').checked = !!c.resolve_names; $('c-nb').checked = !!c.netbios; $('c-http').checked = !!c.http_titles;
-  $('cfg-msg').textContent = ''; $('pw-msg').textContent = '';
-  if (!$('dlg-settings').open) $('dlg-settings').showModal();
 }
 
 async function refreshSession() {
@@ -560,6 +563,14 @@ function init() {
     try {
       const r = await post('/api/config', cfg);
       S.cfg = r.config; openSettings(); $('cfg-msg').textContent = 'Saved.';
+    } catch (err) { $('cfg-msg').textContent = err.message; }
+  };
+
+  // Only fills in the form: the defaults take effect when Save is pressed.
+  $('reset-cfg').onclick = async () => {
+    try {
+      fillSettings(await api('/api/config/defaults'));
+      $('cfg-msg').textContent = 'Default values filled in - press Save to use them.';
     } catch (err) { $('cfg-msg').textContent = err.message; }
   };
 
