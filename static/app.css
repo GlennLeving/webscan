@@ -87,13 +87,10 @@ header{flex-wrap:wrap}
 .h-main{flex:1;min-width:0}
 .h-main b{display:block;font-weight:600;font-variant-numeric:tabular-nums}
 .h-main > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.h-del{opacity:.35;border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:15px}
-.history li:hover .h-del{opacity:1}
 .h-pick{margin:3px 2px 0 0;accent-color:var(--down)}
 .history.picking li{cursor:default}
 .history.picking li.picked{border-color:var(--down);background:var(--panel2)}
 .history.picking li.running{opacity:.5}
-.h-del:hover{color:var(--down)}
 .d-new{color:var(--up)} .d-gone{color:var(--down)}
 .st-stopped,.st-error{color:var(--warn)}
 

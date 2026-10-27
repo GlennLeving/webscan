@@ -35,6 +35,7 @@ const when = (t) => t ? new Date(t * 1000).toLocaleString([], { dateStyle: 'shor
 const day = (t) => t ? new Date(t * 1000).toLocaleDateString() : '';
 const ipnum = (ip) => ip.split('.').reduce((a, b) => a * 256 + (+b), 0);
 const ms = (v) => v == null ? '' : (v < 1 ? '<1' : (v < 10 ? v.toFixed(1) : Math.round(v))) + ' ms';
+const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const dur = (s) => s < 60 ? Math.round(s) + ' s' : Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s';
 
 /* ---------- main loop ---------- */
@@ -43,7 +44,7 @@ async function tick() {
     const st = await api('/api/state');
     S.scans = st.scans; S.cfg = st.config; S.authed = st.authed; S.protected = st.protected;
     $('mode').textContent = st.mode;
-    $('db-info').textContent = `${st.db.scans} scans stored, ${st.db.known_hosts} hosts ever seen.`;
+    $('db-info').textContent = `${count(st.db.scans, 'scan')} stored, ${count(st.db.known_hosts, 'host')} ever seen.`;
     if (!$('targets').value && document.activeElement !== $('targets')) $('targets').value = st.config.default_targets;
 
     const was = S.job;
@@ -95,7 +96,7 @@ function renderHistory() {
     if (running) line = '<span class="muted">running ...</span>';
     else if (s.status === 'error') line = `<span class="st-error" title="${esc(s.error)}">failed</span>`;
     else {
-      line = `${s.alive} hosts`;
+      line = count(s.alive, 'host');
       if (s.new) line += ` · <span class="d-new">+${s.new}</span>`;
       if (s.gone) line += ` · <span class="d-gone">−${s.gone}</span>`;
       if (s.status === 'stopped') line += ' · <span class="st-stopped">stopped</span>';
@@ -103,15 +104,13 @@ function renderHistory() {
     const pick = S.picking
       ? `<input type="checkbox" class="h-pick" ${S.picked.has(s.id) ? 'checked' : ''} ${running ? 'disabled' : ''}>` : '';
     li.innerHTML = `${pick}<div class="h-main"><b>${esc(when(s.started))}${s.trigger === 'schedule' ? ' ⏱' : ''}</b>
-      <span class="small muted">${esc(s.targets)}</span><span class="small">${line}</span></div>
-      ${S.picking || running ? '' : '<button class="h-del" title="Delete this scan">×</button>'}`;
-    li.onclick = async (ev) => {
+      <span class="small muted">${esc(s.targets)}</span><span class="small">${line}</span></div>`;
+    li.onclick = async () => {
       if (running) return;
       if (S.picking) {
         if (S.picked.has(s.id)) S.picked.delete(s.id); else S.picked.add(s.id);
         return renderHistory();
       }
-      if (ev.target.classList.contains('h-del')) return deleteScans([s.id]);
       S.sel = s.id; S.vs = 0; S.open.clear(); renderHistory(); await loadScan();
     };
     ul.appendChild(li);
@@ -258,7 +257,7 @@ function render() {
   const sel = $('vs');
   sel.innerHTML = '<option value="0">' + (v.comparable.length ? 'previous scan' : 'nothing to compare') + '</option>'
     + v.comparable.filter((c) => c.id < sc.id || S.vs === c.id)
-      .map((c) => `<option value="${c.id}">#${c.id} · ${esc(when(c.started))} · ${c.alive} hosts</option>`).join('');
+      .map((c) => `<option value="${c.id}">#${c.id} · ${esc(when(c.started))} · ${count(c.alive, 'host')}</option>`).join('');
   sel.value = String(S.vs || 0);
   $('csv-all').href = `/api/export.csv?id=${sc.id}` + (S.vs ? `&vs=${S.vs}` : '');
 

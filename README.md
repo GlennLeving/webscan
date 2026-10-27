@@ -114,8 +114,8 @@ or only hosts with open ports.
 
 ### Deleting scans
 
-The × on a scan in the list deletes that one. To delete several, press
-**Select**, tick the scans and press **Delete n**. A scan that was compared with
+Press **Select** above the scan list, tick the scans to delete — one or
+several — and press **Delete n**. A scan that was compared with
 a deleted one is then compared with the scan before it, and its new/gone counts
 are worked out again. The oldest scans beyond `keep_scans` are deleted
 automatically.
